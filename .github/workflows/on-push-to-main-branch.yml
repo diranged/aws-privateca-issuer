@@ -1,49 +1,45 @@
 name: On Push to Main Branch
 
+permissions: write-all
+
 on:
   push:
-    branches: [ master ]
+    branches: [ nextdoor ]
 
 env:
-  ECR_REPO: public.ecr.aws/z0d6s8x8
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
     steps:
+
     - name: Check out code
       uses: actions/checkout@v2
       with:
         fetch-depth: 0
+
     - name: Setup Dockerx
       uses: docker/setup-buildx-action@v1
-    - name: Setup AWS Credentials
-      uses: aws-actions/configure-aws-credentials@master
+
+    - name: Log in to the Container registry
+      uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
       with:
-        role-to-assume: arn:aws:iam::783680406432:role/GithubActionsPublishRole-test-us-east-1
-        aws-region: us-east-1
-    - name: Login to Public ECR
-      uses: docker/login-action@v1
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@v3.6.1
       with:
-        registry: public.ecr.aws
-      env:
-        AWS_REGION: us-east-1
-    - name: Setup Push to ECR
-      run: |
-        export PLUGIN_VERSION=$(git describe --tags)
-        export TAG_BASE=${{ env.ECR_REPO }}/$(echo $GITHUB_REPOSITORY | sed s#/#-#)-test
-        echo TAG_BASE=$TAG_BASE >> $GITHUB_ENV
-        echo PLUGIN_VERSION=$PLUGIN_VERSION >> $GITHUB_ENV
-    - name: Build and push container images
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+    - name: Build and push Docker image
       uses: docker/build-push-action@v2
       with:
-        build-args: |
-          pkg_version=${{ env.PLUGIN_VERSION }}
         context: .
-        tags: |
-          ${{ env.TAG_BASE }}:latest
-          ${{ env.TAG_BASE }}:${{ env.PLUGIN_VERSION }}
         push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
